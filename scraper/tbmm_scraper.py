@@ -21,7 +21,7 @@ from bs4 import BeautifulSoup
 logging.basicConfig(
     level=logging.INFO,
     format='[%(asctime)s] %(levelname)s: %(message)s',
-    datefmt='%Y-%m-%d %H:%i:%S'
+    datefmt='%Y-%m-%d %H:%M:%S'
 )
 logger = logging.getLogger(__name__)
 
@@ -95,35 +95,71 @@ def scrape_proposal_list() -> List[Dict[str, str]]:
     soup = BeautifulSoup(html, 'lxml')
     proposals_list = []
     
-    # Teklif linklerini bul
-    # TBMM sitesinde genellikle .kanunTeklifiListesi veya benzeri class kullanılır
-    # Eğer yapı değişirse bu selector'ı güncellemeniz gerekir
-    links = soup.select('a[href*="kanun"]')  # Genel bir selector
+    # TBMM sitesinin farklı olası yapılarını dene
+    # Önce spesifik selector'ları dene
+    links = []
     
+    # Seçenek 1: Liste sayfasındaki table veya ul içindeki linkler
+    content_area = soup.select_one('.icerikMetni, .liste, .kanunListesi, #icerik, main')
+    if content_area:
+        links = content_area.find_all('a', href=True)
+        logger.info(f"🔍 İçerik alanında {len(links)} link bulundu")
+    
+    # Seçenek 2: Tüm sayfada kanun teklifi linklerini ara
     if not links:
-        # Alternatif: tüm linkleri tara ve "teklif" içerenleri al
         all_links = soup.find_all('a', href=True)
-        links = [link for link in all_links if 'teklif' in link.get('href', '').lower()]
+        # Detay sayfalarına giden linkleri filtrele
+        links = [
+            link for link in all_links 
+            if any(keyword in str(link.get('href', '')).lower() 
+                   for keyword in ['kanunteklifi', 'kanun_teklifi', 'teklif', '/yasa', '/kt'])
+        ]
+        logger.info(f"🔍 Tüm sayfada {len(links)} potansiyel teklif linki bulundu")
     
-    logger.info(f"📋 {len(links)} adet teklif linki bulundu")
+    # Seçenek 3: Eğer hiç link bulamadıysak, table row'ları kontrol et
+    if not links:
+        table_rows = soup.select('table tr td a')
+        links = [link for link in table_rows if link.get('href')]
+        logger.info(f"🔍 Tablolarda {len(links)} link bulundu")
+    
+    logger.info(f"📋 Toplam {len(links)} adet link işlenecek")
     
     seen_urls = set()
     for link in links:
         href = link.get('href', '')
-        if not href or href in seen_urls:
+        if not href or href in seen_urls or href == '#':
+            continue
+        
+        # JavaScript veya anchor linklerini atla
+        if href.startswith('javascript:') or href.startswith('#'):
             continue
         
         full_url = urljoin(BASE_URL, href)
         title = link.get_text(strip=True)
         
-        if title and full_url not in seen_urls:
+        # Başlık yoksa veya çok kısaysa atla
+        if not title or len(title) < 10:
+            continue
+        
+        # Aynı URL'yi bir kez ekle
+        if full_url not in seen_urls:
             proposals_list.append({
                 'baslik': title,
                 'link': full_url
             })
             seen_urls.add(full_url)
+            logger.debug(f"  ✓ Eklendi: {title[:50]}...")
     
     logger.info(f"✅ {len(proposals_list)} benzersiz teklif belirlendi")
+    
+    # Debug için: Eğer hiç teklif bulunamadıysa, sayfanın bir kısmını logla
+    if not proposals_list:
+        logger.error("❌ Hiç teklif bulunamadı! Sayfa yapısı:")
+        logger.error(f"Sayfa başlığı: {soup.title.string if soup.title else 'Yok'}")
+        logger.error(f"İçerik uzunluğu: {len(html)} karakter")
+        # İlk 500 karakteri logla
+        logger.error(f"Sayfa önizleme: {html[:500]}")
+    
     return proposals_list
 
 
@@ -139,27 +175,55 @@ def scrape_proposal_detail(proposal: Dict[str, str]) -> Dict[str, str]:
     
     soup = BeautifulSoup(html, 'lxml')
     
-    # İçerik alanını bul (TBMM sitesinde genellikle #icerik id'si kullanılır)
-    content_div = soup.select_one('#icerik, .icerik, .kanunMetni, .teklif-metni, main, article')
+    # İçerik alanını bul - Birden fazla selector dene
+    content_div = None
+    selectors = [
+        '#icerik',           # Genel içerik id'si
+        '.icerik',           # Genel içerik class'ı
+        '.icerikMetni',      # İçerik metni class'ı
+        '.kanunMetni',       # Kanun metni özel class'ı
+        '.teklif-metni',     # Teklif metni
+        'main',              # HTML5 main elementi
+        'article',           # HTML5 article elementi
+        '.content',          # Genel content class'ı
+        '#content',          # Genel content id'si
+    ]
+    
+    for selector in selectors:
+        content_div = soup.select_one(selector)
+        if content_div:
+            logger.debug(f"  İçerik bulundu: {selector}")
+            break
+    
+    # Eğer hiçbir selector çalışmadıysa, body'yi kullan
+    if not content_div:
+        content_div = soup.find('body')
+        if content_div:
+            logger.warning(f"⚠️ Özel selector bulunamadı, body kullanılıyor")
     
     if content_div:
         # Script ve style etiketlerini temizle
-        for tag in content_div.find_all(['script', 'style', 'nav', 'header', 'footer']):
+        for tag in content_div.find_all(['script', 'style', 'nav', 'header', 'footer', 'aside', 'iframe']):
             tag.decompose()
         
         full_text = content_div.get_text(separator='\n', strip=True)
+        
+        # Boş veya çok kısa ise uyar
+        if len(full_text) < 100:
+            logger.warning(f"⚠️ İçerik çok kısa ({len(full_text)} karakter): {url}")
+            logger.warning(f"İçerik önizleme: {full_text[:200]}")
         
         # Esas No ve Dönem/Yasama bilgisini çıkar
         esas_no = extract_esas_no(full_text)
         donem_yasama = extract_donem_yasama(full_text)
         
         proposal['metin'] = full_text
-        proposal['esasNo'] = esas_no
-        proposal['donemYasamaYili'] = donem_yasama
+        proposal['esasNo'] = esas_no if esas_no else 'UNKNOWN'
+        proposal['donemYasamaYili'] = donem_yasama if donem_yasama else 'UNKNOWN'
         
-        logger.info(f"✅ İçerik çekildi ({len(full_text)} karakter)")
+        logger.info(f"✅ İçerik çekildi ({len(full_text)} karakter, Esas: {esas_no}, Dönem: {donem_yasama})")
     else:
-        logger.warning(f"⚠️ İçerik alanı bulunamadı: {url}")
+        logger.error(f"❌ Hiçbir içerik alanı bulunamadı: {url}")
         proposal['metin'] = ''
         proposal['esasNo'] = ''
         proposal['donemYasamaYili'] = ''

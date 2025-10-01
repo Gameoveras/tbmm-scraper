@@ -35,6 +35,21 @@ jobs:
         env:
           DONEM: ${{ github.event.inputs.donem || '28' }}
 
+      - name: Check scraped data
+        run: |
+          echo "📊 Scraping sonuçları:"
+          if [ -f data/proposals.json ]; then
+            echo "✅ JSON dosyası oluşturuldu"
+            echo "📏 Dosya boyutu: $(wc -c < data/proposals.json) byte"
+            echo "📋 İlk 500 karakter:"
+            head -c 500 data/proposals.json
+            echo ""
+            echo "🔢 Teklif sayısı: $(jq '. | length' data/proposals.json || echo 'JSON parse hatası')"
+          else
+            echo "❌ JSON dosyası oluşturulamadı!"
+            exit 1
+          fi
+
       - name: Upload scraped data as artifact
         uses: actions/upload-artifact@v4
         with:
@@ -45,15 +60,30 @@ jobs:
       - name: Push data to server
         if: success()
         run: |
+          echo "🚀 Sunucuya veri gönderiliyor..."
+          echo "📍 URL: ${{ secrets.RECEIVER_URL }}"
+          
           # JSON dosyasını sunucuya POST et
-          curl -X POST \
+          response=$(curl -X POST \
             -H "Content-Type: application/json" \
             -H "X-API-KEY: ${{ secrets.PUSH_API_KEY }}" \
             --data @data/proposals.json \
-            --fail \
+            --write-out "\n%{http_code}" \
             --show-error \
             --verbose \
-            "${{ secrets.RECEIVER_URL }}"
+            "${{ secrets.RECEIVER_URL }}" 2>&1)
+          
+          http_code=$(echo "$response" | tail -n1)
+          echo "📡 HTTP Status: $http_code"
+          echo "📄 Sunucu yanıtı:"
+          echo "$response" | head -n -1
+          
+          if [ "$http_code" != "200" ]; then
+            echo "❌ Sunucu hatası! HTTP $http_code"
+            exit 1
+          fi
+          
+          echo "✅ Veri başarıyla gönderildi!"
         
       - name: Notify on failure
         if: failure()
