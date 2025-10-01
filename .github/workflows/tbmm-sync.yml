@@ -1,0 +1,53 @@
+name: TBMM Scrape & Push
+
+on:
+  workflow_dispatch:
+    inputs:
+      donem:
+        description: 'Dönem (ör: 23)'
+        required: false
+        default: '23'
+  schedule:
+    - cron: '0 */6 * * *'
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install deps
+        run: npm ci
+        working-directory: .
+
+      - name: Run scraper (örnek)
+        run: |
+          donem="${{ github.event.inputs.donem || '23' }}"
+          node meclis/donem-parser.js --donem "$donem" --dest data/donem.$donem.json
+          node meclis/mv-parse-all.js --file data/donem.$donem.json --donem "$donem" --dest data/donem-ext.$donem.json
+          node ktii/parse-all.js --file data/donem-ext.$donem.json --destII data/ii.$donem.json --destMV data/donem-ext.$donem.json --donem $donem
+          mkdir -p data/kt-detay-$donem
+          node kt-detay/download-all.js --file data/ii.$donem.json --dest data/kt-detay-$donem/ --donem $donem
+          node kt-detay/parse-all.js --file data/ii.$donem.json --dest data/kt.$donem.json --contentDir data/kt-detay-$donem/
+        working-directory: .
+
+      - name: POST JSON to your server
+        env:
+          PUSH_URL: ${{ secrets.PUSH_URL }}
+          PUSH_KEY: ${{ secrets.PUSH_KEY }}
+        run: |
+          donem="${{ github.event.inputs.donem || '23' }}"
+          file="data/kt.$donem.json"
+          if [ -f "$file" ]; then
+            curl -X POST "${PUSH_URL}" -H "X-API-KEY: ${PUSH_KEY}" --data-binary @"$file" -H "Content-Type: application/json" -v
+          else
+            echo "Beklenen JSON yok: $file"
+            exit 1
+          fi
+        working-directory: .
