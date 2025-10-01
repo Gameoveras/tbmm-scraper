@@ -22,32 +22,36 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install deps
+      - name: Install dependencies
         run: npm ci
-        working-directory: .
 
-      - name: Run scraper (örnek)
+      - name: Run scraper
         run: |
-          donem="${{ github.event.inputs.donem || '23' }}"
-          node meclis/donem-parser.js --donem "$donem" --dest data/donem.$donem.json
-          node meclis/mv-parse-all.js --file data/donem.$donem.json --donem "$donem" --dest data/donem-ext.$donem.json
-          node ktii/parse-all.js --file data/donem-ext.$donem.json --destII data/ii.$donem.json --destMV data/donem-ext.$donem.json --donem $donem
-          mkdir -p data/kt-detay-$donem
-          node kt-detay/download-all.js --file data/ii.$donem.json --dest data/kt-detay-$donem/ --donem $donem
-          node kt-detay/parse-all.js --file data/ii.$donem.json --dest data/kt.$donem.json --contentDir data/kt-detay-$donem/
-        working-directory: .
+          DONEM="${{ github.event.inputs.donem || '23' }}"
+          echo "İşlenecek dönem: $DONEM"
 
-      - name: POST JSON to your server
+          node meclis/donem-parser.js --donem "$DONEM" --dest "data/donem.$DONEM.json"
+          node meclis/mv-parse-all.js --file "data/donem.$DONEM.json" --donem "$DONEM" --dest "data/donem-ext.$DONEM.json"
+          node ktii/parse-all.js --file "data/donem-ext.$DONEM.json" --destII "data/ii.$DONEM.json" --destMV "data/donem-ext.$DONEM.json" --donem "$DONEM"
+          mkdir -p "data/kt-detay-$DONEM"
+          node kt-detay/download-all.js --file "data/ii.$DONEM.json" --dest "data/kt-detay-$DONEM/" --donem "$DONEM"
+          node kt-detay/parse-all.js --file "data/ii.$DONEM.json" --dest "data/kt.$DONEM.json" --contentDir "data/kt-detay-$DONEM/"
+
+      - name: POST JSON to server
         env:
           PUSH_URL: ${{ secrets.PUSH_URL }}
           PUSH_KEY: ${{ secrets.PUSH_KEY }}
         run: |
-          donem="${{ github.event.inputs.donem || '23' }}"
-          file="data/kt.$donem.json"
-          if [ -f "$file" ]; then
-            curl -X POST "${PUSH_URL}" -H "X-API-KEY: ${PUSH_KEY}" --data-binary @"$file" -H "Content-Type: application/json" -v
+          DONEM="${{ github.event.inputs.donem || '23' }}"
+          FILE="data/kt.$DONEM.json"
+
+          if [ -f "$FILE" ]; then
+            echo "Dosya bulundu: $FILE. Gönderiliyor..."
+            curl -X POST "$PUSH_URL" \
+              -H "X-API-KEY: $PUSH_KEY" \
+              --data-binary @"$FILE" \
+              -H "Content-Type: application/json"
           else
-            echo "Beklenen JSON yok: $file"
+            echo "Hata: Dosya bulunamadı: $FILE"
             exit 1
           fi
-        working-directory: .
