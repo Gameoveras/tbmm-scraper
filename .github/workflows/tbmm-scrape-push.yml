@@ -48,12 +48,12 @@ jobs:
           # JSON dosyasını sunucuya POST et
           curl -X POST \
             -H "Content-Type: application/json" \
-            -H "X-API-KEY: ${{ secrets.PUSH_API_KEY }}" \
+            -H "X-API-KEY: ${{ secrets.PUSH_KEY }}" \
             --data @data/proposals.json \
             --fail \
             --show-error \
             --verbose \
-            "${{ secrets.RECEIVER_URL }}"
+            "${{ secrets.PUSH_URL }}"
         
       - name: Notify on failure
         if: failure()
