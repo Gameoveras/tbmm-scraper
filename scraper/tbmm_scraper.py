@@ -14,7 +14,12 @@ import logging
 from typing import List, Dict, Optional
 from urllib.parse import urljoin
 
-import requests
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
 
 # Logging yapılandırması
@@ -34,12 +39,8 @@ REQUEST_DELAY = 2  # Saniye cinsinden bekleme süresi
 MAX_RETRIES = 3
 TIMEOUT = 30
 
-# User-Agent header
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-    "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
-}
+# Global WebDriver instance
+driver = None
 
 
 def create_data_directory():
@@ -48,17 +49,76 @@ def create_data_directory():
     logger.info(f"✅ Veri dizini hazır: {DATA_DIR}")
 
 
+def init_driver():
+    """Selenium WebDriver'ı başlatır"""
+    global driver
+    
+    if driver is not None:
+        return driver
+    
+    logger.info("🚀 Selenium WebDriver başlatılıyor...")
+    
+    chrome_options = Options()
+    chrome_options.add_argument('--headless')  # Tarayıcı gösterilmez
+    chrome_options.add_argument('--no-sandbox')
+    chrome_options.add_argument('--disable-dev-shm-usage')
+    chrome_options.add_argument('--disable-gpu')
+    chrome_options.add_argument('--window-size=1920,1080')
+    chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36')
+    
+    try:
+        driver = webdriver.Chrome(options=chrome_options)
+        logger.info("✅ WebDriver başarıyla başlatıldı")
+        return driver
+    except Exception as e:
+        logger.error(f"❌ WebDriver başlatılamadı: {e}")
+        raise
+
+
+def close_driver():
+    """Selenium WebDriver'ı kapatır"""
+    global driver
+    if driver is not None:
+        try:
+            driver.quit()
+            driver = None
+            logger.info("✅ WebDriver kapatıldı")
+        except:
+            pass
+
+
 def fetch_page(url: str, retries: int = MAX_RETRIES) -> Optional[str]:
-    """Belirtilen URL'den HTML içeriğini çeker"""
+    """Belirtilen URL'den HTML içeriğini çeker (Selenium ile)"""
     for attempt in range(1, retries + 1):
         try:
             logger.info(f"🌐 Sayfa çekiliyor: {url} (Deneme {attempt}/{retries})")
-            response = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
-            response.raise_for_status()
-            response.encoding = 'utf-8'
-            logger.info(f"✅ Sayfa başarıyla çekildi ({len(response.text)} karakter)")
-            return response.text
-        except requests.RequestException as e:
+            
+            driver = init_driver()
+            driver.get(url)
+            
+            # JavaScript'in yüklenmesi için bekle
+            logger.info("⏳ JavaScript yüklenene kadar bekleniyor...")
+            time.sleep(5)  # Bot korumasının geçmesi için bekle
+            
+            # Sayfanın body elementinin yüklenmesini bekle
+            WebDriverWait(driver, TIMEOUT).until(
+                EC.presence_of_element_located((By.TAG_NAME, "body"))
+            )
+            
+            # Sayfa tamamen yüklendikten sonra HTML'i al
+            html = driver.page_source
+            
+            logger.info(f"✅ Sayfa başarıyla çekildi ({len(html)} karakter)")
+            
+            # Hala bot koruması var mı kontrol et
+            if len(html) < 10000 or 'challenge' in html.lower():
+                logger.warning("⚠️ Bot koruması aktif olabilir, biraz daha bekleniyor...")
+                time.sleep(5)
+                html = driver.page_source
+            
+            return html
+            
+        except Exception as e:
             logger.warning(f"⚠️ Hata (Deneme {attempt}/{retries}): {e}")
             if attempt < retries:
                 time.sleep(REQUEST_DELAY * 2)
@@ -288,6 +348,9 @@ def main():
     except Exception as e:
         logger.error(f"❌ Kritik hata: {e}", exc_info=True)
         raise
+    finally:
+        # Her durumda WebDriver'ı kapat
+        close_driver()
 
 
 if __name__ == "__main__":

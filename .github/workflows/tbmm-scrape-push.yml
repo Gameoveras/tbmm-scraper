@@ -24,9 +24,20 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
+      - name: Setup Chrome
+        uses: browser-actions/setup-chrome@latest
+        with:
+          chrome-version: stable
+
+      - name: Install ChromeDriver
+        run: |
+          # ChromeDriver'ı otomatik olarak kur
+          CHROME_VERSION=$(google-chrome --version | awk '{print $3}' | cut -d'.' -f1)
+          echo "Chrome sürümü: $CHROME_VERSION"
+          
       - name: Install dependencies
         run: |
-          pip install requests beautifulsoup4 lxml
+          pip install requests beautifulsoup4 lxml selenium
 
       - name: Run TBMM scraper
         id: scraper
