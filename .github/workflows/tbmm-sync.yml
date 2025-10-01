@@ -11,74 +11,46 @@ on:
     - cron: '0 */6 * * *'
 
 jobs:
-  build-and-push:
+  build-and-debug:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Create data directory
-        run: mkdir -p data
-
-      - name: Run scraper and debug outputs
-        id: scraper_debug
+      - name: Debug - Download Raw Page
+        id: debug_download
         run: |
-          set -e
-          DONEM="${{ github.event.inputs.donem || '28' }}"
-          echo "İşlenecek dönem: $DONEM"
-          
-          echo "--- Adım 1: donem-parser.js çalıştırılıyor ---"
-          node meclis/donem-parser.js --donem "$DONEM" --dest "data/donem.$DONEM.json"
-          echo "--> Çıktı dosyası kontrolü (donem.$DONEM.json):"
-          ls -l "data/donem.$DONEM.json"
-          
-          echo "--- Adım 2: mv-parse-all.js çalıştırılıyor ---"
-          node meclis/mv-parse-all.js --file "data/donem.$DONEM.json" --donem "$DONEM" --dest "data/donem-ext.$DONEM.json"
-          echo "--> Çıktı dosyası kontrolü (donem-ext.$DONEM.json):"
-          ls -l "data/donem-ext.$DONEM.json"
-          
-          echo "--- Adım 3: ktii/parse-all.js çalıştırılıyor ---"
-          node ktii/parse-all.js --file "data/donem-ext.$DONEM.json" --destII "data/ii.$DONEM.json" --destMV "data/donem-ext.$DONEM.json" --donem "$DONEM"
-          echo "--> Çıktı dosyası kontrolü (ii.$DONEM.json):"
-          ls -l "data/ii.$DONEM.json"
-          
-          echo "--- Adım 4: kt-detay/download-all.js çalıştırılıyor ---"
-          mkdir -p "data/kt-detay-$DONEM"
-          node kt-detay/download-all.js --file "data/ii.$DONEM.json" --dest "data/kt-detay-$DONEM/" --donem "$DONEM"
-          echo "--> İndirilen dosyalar kontrolü (ilk 10):"
-          ls -l "data/kt-detay-$DONEM/" | head -n 10
-          
-          echo "--- Adım 5: kt-detay/parse-all.js çalıştırılıyor ---"
-          node kt-detay/parse-all.js --file "data/ii.$DONEM.json" --dest "data/kt.$DONEM.json" --contentDir "data/kt-detay-$DONEM/"
-          echo "--> Final çıktı dosyası kontrolü (kt.$DONEM.json):"
-          ls -l "data/kt.$DONEM.json"
-
-      - name: POST JSON to server
-        # Yalnızca scraper adımında hata olmazsa çalışır
-        if: success()
-        env:
-          PUSH_URL: ${{ secrets.PUSH_URL }}
-          PUSH_KEY: ${{ secrets.PUSH_KEY }}
-        run: |
-          DONEM="${{ github.event.inputs.donem || '28' }}"
-          FILE="data/kt.$DONEM.json"
-          
-          if [ ! -f "$FILE" ] || [ $(jq 'length' "$FILE") -eq 0 ]; then
-            echo "Hata: Scraper veri bulamadı veya JSON dosyası boş."
-            exit 1
-          fi
-
-          echo "Dosya bulundu ve içeriği dolu. Sunucuya gönderiliyor..."
-          curl -X POST "$PUSH_URL" \
-            -H "X-API-KEY: $PUSH_KEY" \
-            -H "Content-Type: application/json" \
-            --data-binary @"$FILE" \
+          # Scraper'ın ulaşmaya çalıştığı ana URL'i curl ile indiriyoruz.
+          # -L flag'i yönlendirmeleri takip eder.
+          # -A ile gerçek bir tarayıcı taklidi yapıyoruz.
+          curl -L -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36" \
+            "https://www.tbmm.gov.tr/Yasama/KanunTeklifi" \
+            -o tbmm_sayfasi.html \
             --fail --show-error --verbose
+          
+          echo "Sayfa indirildi. Boyutu:"
+          ls -l tbmm_sayfasi.html
+
+      - name: Upload Debug Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-output
+          path: tbmm_sayfasi.html
+
+      #----------------------------------------------------
+      # SORUNU ANLAYANA KADAR BU ADIMLARI GEÇİCİ OLARAK DEVRE DIŞI BIRAKTIM
+      #----------------------------------------------------
+      # - name: Setup Node.js
+      #   uses: actions/setup-node@v4
+      #   with:
+      #     node-version: '20'
+
+      # - name: Install dependencies
+      #   run: npm install
+
+      # - name: Create data directory
+      #   run: mkdir -p data
+      
+      # - name: Run scraper
+      #   run: |
+      #     # ... (eski scraper kodları)
