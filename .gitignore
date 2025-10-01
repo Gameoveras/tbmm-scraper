@@ -1,0 +1,46 @@
+# Ortam değişkenleri ve hassas bilgiler
+.yasa_env
+*.env
+.env.local
+.env.production
+
+# Log dosyaları
+*.log
+receiver.log
+
+# Veri dosyaları
+data/
+*.json
+
+# Composer bağımlılıkları (vendor'u commitlediniz, bu satır opsiyonel)
+# vendor/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Cookies ve session dosyaları
+*_cookies.txt
+admin_cookies.txt
+
+# Temporary files
+*.tmp
+*.bak
+

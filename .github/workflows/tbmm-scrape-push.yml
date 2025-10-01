@@ -1,0 +1,63 @@
+name: TBMM Scrape & Push
+
+on:
+  workflow_dispatch:
+    inputs:
+      donem:
+        description: 'Dönem (ör: 28)'
+        required: false
+        default: '28'
+  schedule:
+    - cron: '0 */6 * * *'  # Her 6 saatte bir çalışır
+
+jobs:
+  scrape-and-push:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install requests beautifulsoup4 lxml
+
+      - name: Run TBMM scraper
+        id: scraper
+        run: |
+          python scraper/tbmm_scraper.py
+        env:
+          DONEM: ${{ github.event.inputs.donem || '28' }}
+
+      - name: Upload scraped data as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tbmm-data-${{ github.run_number }}
+          path: data/proposals.json
+          retention-days: 7
+
+      - name: Push data to server
+        if: success()
+        run: |
+          # JSON dosyasını sunucuya POST et
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -H "X-API-KEY: ${{ secrets.PUSH_API_KEY }}" \
+            --data @data/proposals.json \
+            --fail \
+            --show-error \
+            --verbose \
+            "${{ secrets.RECEIVER_URL }}"
+        
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "❌ Scraping veya push işlemi başarısız oldu!"
+          echo "Logları kontrol edin: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
