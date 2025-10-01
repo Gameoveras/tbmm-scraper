@@ -6,8 +6,9 @@ on:
       donem:
         description: 'Dönem (ör: 23)'
         required: false
-        default: '23'
+        default: '28' # Güncel döneme güncellendi
   schedule:
+    # Her 6 saatte bir çalışır
     - cron: '0 */6 * * *'
 
 jobs:
@@ -21,20 +22,29 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          # Performansı artırmak için npm cache'ini etkinleştir
+          cache: 'npm'
 
       - name: Install dependencies
+        # HATA DÜZELTMESİ: package-lock.json yoksa 'npm install' kullanılır.
         run: npm install
 
       - name: Run scraper
         run: |
-          DONEM="${{ github.event.inputs.donem || '23' }}"
+          # Inputs'tan veya cron'dan gelen dönem bilgisini ayarla
+          DONEM="${{ github.event.inputs.donem || '28' }}"
           echo "İşlenecek dönem: $DONEM"
-
+          
+          # Scraper scriptlerini çalıştır
           node meclis/donem-parser.js --donem "$DONEM" --dest "data/donem.$DONEM.json"
           node meclis/mv-parse-all.js --file "data/donem.$DONEM.json" --donem "$DONEM" --dest "data/donem-ext.$DONEM.json"
           node ktii/parse-all.js --file "data/donem-ext.$DONEM.json" --destII "data/ii.$DONEM.json" --destMV "data/donem-ext.$DONEM.json" --donem "$DONEM"
+          
+          # Detay dosyaları için klasör oluştur ve indir
           mkdir -p "data/kt-detay-$DONEM"
           node kt-detay/download-all.js --file "data/ii.$DONEM.json" --dest "data/kt-detay-$DONEM/" --donem "$DONEM"
+          
+          # İndirilen detayları parse et
           node kt-detay/parse-all.js --file "data/ii.$DONEM.json" --dest "data/kt.$DONEM.json" --contentDir "data/kt-detay-$DONEM/"
 
       - name: POST JSON to server
@@ -42,16 +52,17 @@ jobs:
           PUSH_URL: ${{ secrets.PUSH_URL }}
           PUSH_KEY: ${{ secrets.PUSH_KEY }}
         run: |
-          DONEM="${{ github.event.inputs.donem || '23' }}"
+          DONEM="${{ github.event.inputs.donem || '28' }}"
           FILE="data/kt.$DONEM.json"
-
+          
           if [ -f "$FILE" ]; then
-            echo "Dosya bulundu: $FILE. Gönderiliyor..."
+            echo "Dosya bulundu: $FILE. Sunucuya gönderiliyor..."
             curl -X POST "$PUSH_URL" \
               -H "X-API-KEY: $PUSH_KEY" \
+              -H "Content-Type: application/json" \
               --data-binary @"$FILE" \
-              -H "Content-Type: application/json"
+              --fail --show-error --verbose
           else
-            echo "Hata: Dosya bulunamadı: $FILE"
+            echo "Hata: Oluşturulan JSON dosyası bulunamadı: $FILE"
             exit 1
           fi
