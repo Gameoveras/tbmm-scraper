@@ -21,11 +21,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          # HATA DÜZELTMESİ: Cache satırı, package-lock.json dosyası
-          # reponuzda olmadığı için kaldırıldı.
 
       - name: Install dependencies
         run: npm install
+
+      - name: Create data directory
+        # HATA DÜZELTMESİ: Scraper'ın dosyaları yazabilmesi için 'data' klasörünü oluştur.
+        run: mkdir -p data
 
       - name: Run scraper
         run: |
