@@ -28,24 +28,42 @@ jobs:
       - name: Create data directory
         run: mkdir -p data
 
-      - name: Run scraper
+      - name: Run scraper and debug outputs
+        id: scraper_debug
         run: |
-          # HATA DÜZELTMESİ: 'set -e' komutu, scriptlerden biri hata verirse tüm adımı durdurur.
           set -e
-          
           DONEM="${{ github.event.inputs.donem || '28' }}"
           echo "İşlenecek dönem: $DONEM"
           
+          echo "--- Adım 1: donem-parser.js çalıştırılıyor ---"
           node meclis/donem-parser.js --donem "$DONEM" --dest "data/donem.$DONEM.json"
-          node meclis/mv-parse-all.js --file "data/donem.$DONEM.json" --donem "$DONEM" --dest "data/donem-ext.$DONEM.json"
-          node ktii/parse-all.js --file "data/donem-ext.$DONEM.json" --destII "data/ii.$DONEM.json" --destMV "data/donem-ext.$DONEM.json" --donem "$DONEM"
+          echo "--> Çıktı dosyası kontrolü (donem.$DONEM.json):"
+          ls -l "data/donem.$DONEM.json"
           
+          echo "--- Adım 2: mv-parse-all.js çalıştırılıyor ---"
+          node meclis/mv-parse-all.js --file "data/donem.$DONEM.json" --donem "$DONEM" --dest "data/donem-ext.$DONEM.json"
+          echo "--> Çıktı dosyası kontrolü (donem-ext.$DONEM.json):"
+          ls -l "data/donem-ext.$DONEM.json"
+          
+          echo "--- Adım 3: ktii/parse-all.js çalıştırılıyor ---"
+          node ktii/parse-all.js --file "data/donem-ext.$DONEM.json" --destII "data/ii.$DONEM.json" --destMV "data/donem-ext.$DONEM.json" --donem "$DONEM"
+          echo "--> Çıktı dosyası kontrolü (ii.$DONEM.json):"
+          ls -l "data/ii.$DONEM.json"
+          
+          echo "--- Adım 4: kt-detay/download-all.js çalıştırılıyor ---"
           mkdir -p "data/kt-detay-$DONEM"
           node kt-detay/download-all.js --file "data/ii.$DONEM.json" --dest "data/kt-detay-$DONEM/" --donem "$DONEM"
+          echo "--> İndirilen dosyalar kontrolü (ilk 10):"
+          ls -l "data/kt-detay-$DONEM/" | head -n 10
           
+          echo "--- Adım 5: kt-detay/parse-all.js çalıştırılıyor ---"
           node kt-detay/parse-all.js --file "data/ii.$DONEM.json" --dest "data/kt.$DONEM.json" --contentDir "data/kt-detay-$DONEM/"
+          echo "--> Final çıktı dosyası kontrolü (kt.$DONEM.json):"
+          ls -l "data/kt.$DONEM.json"
 
       - name: POST JSON to server
+        # Yalnızca scraper adımında hata olmazsa çalışır
+        if: success()
         env:
           PUSH_URL: ${{ secrets.PUSH_URL }}
           PUSH_KEY: ${{ secrets.PUSH_KEY }}
@@ -53,18 +71,12 @@ jobs:
           DONEM="${{ github.event.inputs.donem || '28' }}"
           FILE="data/kt.$DONEM.json"
           
-          if [ ! -f "$FILE" ]; then
-            echo "Hata: Oluşturulan JSON dosyası bulunamadı: $FILE"
-            exit 1
-          fi
-          
-          # HATA DÜZELTMESİ: Dosyanın boş olup olmadığını ve sadece '[]' içermediğini kontrol et.
-          if [ $(jq 'length' "$FILE") -eq 0 ]; then
-            echo "Hata: Scraper veri bulamadı, JSON dosyası boş. Gönderim yapılmıyor."
+          if [ ! -f "$FILE" ] || [ $(jq 'length' "$FILE") -eq 0 ]; then
+            echo "Hata: Scraper veri bulamadı veya JSON dosyası boş."
             exit 1
           fi
 
-          echo "Dosya bulundu ve içeriği dolu: $FILE. Sunucuya gönderiliyor..."
+          echo "Dosya bulundu ve içeriği dolu. Sunucuya gönderiliyor..."
           curl -X POST "$PUSH_URL" \
             -H "X-API-KEY: $PUSH_KEY" \
             -H "Content-Type: application/json" \
