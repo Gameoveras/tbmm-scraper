@@ -59,15 +59,32 @@ def init_driver():
     logger.info("🚀 Selenium WebDriver başlatılıyor...")
     
     chrome_options = Options()
-    chrome_options.add_argument('--headless')  # Tarayıcı gösterilmez
+    chrome_options.add_argument('--headless=new')  # Yeni headless mode
     chrome_options.add_argument('--no-sandbox')
     chrome_options.add_argument('--disable-dev-shm-usage')
     chrome_options.add_argument('--disable-gpu')
     chrome_options.add_argument('--window-size=1920,1080')
-    chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36')
+    chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+    chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36')
+    
+    # Bot tespitini zorlaştır
+    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    chrome_options.add_experimental_option('useAutomationExtension', False)
+    chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+    
+    # Gerçek tarayıcı gibi davran
+    prefs = {
+        "profile.default_content_setting_values.notifications": 2,
+        "profile.default_content_settings.popups": 0,
+    }
+    chrome_options.add_experimental_option("prefs", prefs)
     
     try:
         driver = webdriver.Chrome(options=chrome_options)
+        
+        # WebDriver özelliğini gizle
+        driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+        
         logger.info("✅ WebDriver başarıyla başlatıldı")
         return driver
     except Exception as e:
@@ -96,31 +113,55 @@ def fetch_page(url: str, retries: int = MAX_RETRIES) -> Optional[str]:
             driver = init_driver()
             driver.get(url)
             
-            # JavaScript'in yüklenmesi için bekle
-            logger.info("⏳ JavaScript yüklenene kadar bekleniyor...")
-            time.sleep(5)  # Bot korumasının geçmesi için bekle
+            # JavaScript'in yüklenmesi için UZUN bekle
+            logger.info("⏳ Bot koruması geçilene kadar bekleniyor... (15 saniye)")
+            time.sleep(15)  # Bot korumasının geçmesi için daha uzun bekle
             
             # Sayfanın body elementinin yüklenmesini bekle
-            WebDriverWait(driver, TIMEOUT).until(
-                EC.presence_of_element_located((By.TAG_NAME, "body"))
-            )
+            try:
+                WebDriverWait(driver, 20).until(
+                    EC.presence_of_element_located((By.TAG_NAME, "body"))
+                )
+            except:
+                logger.warning("⚠️ Body elementi bulunamadı ama devam ediliyor...")
             
             # Sayfa tamamen yüklendikten sonra HTML'i al
             html = driver.page_source
             
-            logger.info(f"✅ Sayfa başarıyla çekildi ({len(html)} karakter)")
+            logger.info(f"📄 Sayfa çekildi: {len(html)} karakter")
             
-            # Hala bot koruması var mı kontrol et
-            if len(html) < 10000 or 'challenge' in html.lower():
-                logger.warning("⚠️ Bot koruması aktif olabilir, biraz daha bekleniyor...")
-                time.sleep(5)
+            # Bot koruması kontrolleri
+            if len(html) < 20000:
+                logger.warning(f"⚠️ Sayfa çok kısa ({len(html)} karakter), bot koruması aktif olabilir")
+                logger.info("⏳ Ekstra 10 saniye daha bekleniyor...")
+                time.sleep(10)
                 html = driver.page_source
+                logger.info(f"📄 Tekrar denendi: {len(html)} karakter")
             
+            # Challenge veya bobcmn (bot koruma scripti) varsa
+            if 'challenge' in html.lower() or 'bobcmn' in html:
+                logger.warning("⚠️ Bot koruması tespit edildi! Ekstra bekleme...")
+                logger.info("⏳ 20 saniye daha bekleniyor...")
+                time.sleep(20)
+                html = driver.page_source
+                logger.info(f"📄 Son deneme: {len(html)} karakter")
+            
+            # Başlık kontrolü
+            try:
+                title = driver.title
+                logger.info(f"📋 Sayfa başlığı: {title}")
+                if not title or title == "":
+                    logger.warning("⚠️ Sayfa başlığı boş - bot koruması aktif!")
+            except:
+                pass
+            
+            logger.info(f"✅ Sayfa işleme hazır ({len(html)} karakter)")
             return html
             
         except Exception as e:
             logger.warning(f"⚠️ Hata (Deneme {attempt}/{retries}): {e}")
             if attempt < retries:
+                logger.info(f"🔄 {REQUEST_DELAY * 2} saniye sonra tekrar denenecek...")
                 time.sleep(REQUEST_DELAY * 2)
             else:
                 logger.error(f"❌ Sayfa çekilemedi: {url}")
