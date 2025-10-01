@@ -6,9 +6,8 @@ on:
       donem:
         description: 'Dönem (ör: 23)'
         required: false
-        default: '28' # Güncel döneme güncellendi
+        default: '28'
   schedule:
-    # Her 6 saatte bir çalışır
     - cron: '0 */6 * * *'
 
 jobs:
@@ -22,29 +21,24 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          # Performansı artırmak için npm cache'ini etkinleştir
-          cache: 'npm'
+          # HATA DÜZELTMESİ: Cache satırı, package-lock.json dosyası
+          # reponuzda olmadığı için kaldırıldı.
 
       - name: Install dependencies
-        # HATA DÜZELTMESİ: package-lock.json yoksa 'npm install' kullanılır.
         run: npm install
 
       - name: Run scraper
         run: |
-          # Inputs'tan veya cron'dan gelen dönem bilgisini ayarla
           DONEM="${{ github.event.inputs.donem || '28' }}"
           echo "İşlenecek dönem: $DONEM"
           
-          # Scraper scriptlerini çalıştır
           node meclis/donem-parser.js --donem "$DONEM" --dest "data/donem.$DONEM.json"
           node meclis/mv-parse-all.js --file "data/donem.$DONEM.json" --donem "$DONEM" --dest "data/donem-ext.$DONEM.json"
           node ktii/parse-all.js --file "data/donem-ext.$DONEM.json" --destII "data/ii.$DONEM.json" --destMV "data/donem-ext.$DONEM.json" --donem "$DONEM"
           
-          # Detay dosyaları için klasör oluştur ve indir
           mkdir -p "data/kt-detay-$DONEM"
           node kt-detay/download-all.js --file "data/ii.$DONEM.json" --dest "data/kt-detay-$DONEM/" --donem "$DONEM"
           
-          # İndirilen detayları parse et
           node kt-detay/parse-all.js --file "data/ii.$DONEM.json" --dest "data/kt.$DONEM.json" --contentDir "data/kt-detay-$DONEM/"
 
       - name: POST JSON to server
