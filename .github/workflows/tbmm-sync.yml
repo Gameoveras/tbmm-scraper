@@ -26,11 +26,13 @@ jobs:
         run: npm install
 
       - name: Create data directory
-        # HATA DÜZELTMESİ: Scraper'ın dosyaları yazabilmesi için 'data' klasörünü oluştur.
         run: mkdir -p data
 
       - name: Run scraper
         run: |
+          # HATA DÜZELTMESİ: 'set -e' komutu, scriptlerden biri hata verirse tüm adımı durdurur.
+          set -e
+          
           DONEM="${{ github.event.inputs.donem || '28' }}"
           echo "İşlenecek dönem: $DONEM"
           
@@ -51,14 +53,20 @@ jobs:
           DONEM="${{ github.event.inputs.donem || '28' }}"
           FILE="data/kt.$DONEM.json"
           
-          if [ -f "$FILE" ]; then
-            echo "Dosya bulundu: $FILE. Sunucuya gönderiliyor..."
-            curl -X POST "$PUSH_URL" \
-              -H "X-API-KEY: $PUSH_KEY" \
-              -H "Content-Type: application/json" \
-              --data-binary @"$FILE" \
-              --fail --show-error --verbose
-          else
+          if [ ! -f "$FILE" ]; then
             echo "Hata: Oluşturulan JSON dosyası bulunamadı: $FILE"
             exit 1
           fi
+          
+          # HATA DÜZELTMESİ: Dosyanın boş olup olmadığını ve sadece '[]' içermediğini kontrol et.
+          if [ $(jq 'length' "$FILE") -eq 0 ]; then
+            echo "Hata: Scraper veri bulamadı, JSON dosyası boş. Gönderim yapılmıyor."
+            exit 1
+          fi
+
+          echo "Dosya bulundu ve içeriği dolu: $FILE. Sunucuya gönderiliyor..."
+          curl -X POST "$PUSH_URL" \
+            -H "X-API-KEY: $PUSH_KEY" \
+            -H "Content-Type: application/json" \
+            --data-binary @"$FILE" \
+            --fail --show-error --verbose
