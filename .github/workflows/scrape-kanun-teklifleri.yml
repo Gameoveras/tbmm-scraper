@@ -82,6 +82,41 @@ jobs:
             echo "✅ Veriler başarıyla commit edildi ve push yapıldı"
           fi
       
+      - name: 📤 PHP API'ye veri gönder
+        if: success()
+        env:
+          API_ENDPOINT: ${{ secrets.API_ENDPOINT }}
+          API_KEY: ${{ secrets.API_KEY }}
+        run: |
+          if [ -z "$API_ENDPOINT" ] || [ -z "$API_KEY" ]; then
+            echo "⚠️ API_ENDPOINT veya API_KEY tanımlanmamış, API çağrısı atlanıyor"
+            echo "ℹ️ GitHub Secrets'ta API_ENDPOINT ve API_KEY tanımlayın"
+            exit 0
+          fi
+          
+          echo "🌐 PHP API'ye veri gönderiliyor..."
+          echo "📍 Endpoint: $API_ENDPOINT"
+          
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -X POST "$API_ENDPOINT" \
+            -H "Content-Type: application/json" \
+            -H "X-API-KEY: $API_KEY" \
+            -d @scraper/data/kanun_teklifleri_sorgu.json)
+          
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | head -n-1)
+          
+          echo "📊 HTTP Status: $HTTP_CODE"
+          echo "📄 Response: $BODY"
+          
+          if [ "$HTTP_CODE" -eq 200 ]; then
+            echo "✅ Veri başarıyla PHP API'ye gönderildi!"
+          else
+            echo "❌ API çağrısı başarısız oldu!"
+            echo "$BODY" | jq '.' 2>/dev/null || echo "$BODY"
+            exit 1
+          fi
+      
       - name: 📤 Artifact olarak kaydet (yedek)
         uses: actions/upload-artifact@v4
         if: always()
@@ -93,6 +128,6 @@ jobs:
       - name: 🔔 Hata durumunda bildirim (opsiyonel)
         if: failure()
         run: |
-          echo "❌ Scraping işlemi başarısız oldu!"
+          echo "❌ Scraping veya API gönderimi başarısız oldu!"
           echo "🔗 Workflow çalışmasını kontrol edin: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
