@@ -8,10 +8,17 @@
 *.log
 receiver.log
 
-# Veri dosyaları
-data/
+# Veri dosyaları (genel)
 *.json
-# ANCAK scraper sonuçları commit edilsin
+
+# Eski Node.js scraper data dizini ignore et
+/data/
+meclis/data/
+ktii/data/
+kt-detay/data/
+
+# ANCAK Python scraper sonuçları commit edilsin
+!scraper/data/
 !scraper/data/kanun_teklifleri_sorgu.json
 
 # Composer bağımlılıkları (vendor'u commitlediniz, bu satır opsiyonel)
