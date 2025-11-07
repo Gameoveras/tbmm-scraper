@@ -1,0 +1,98 @@
+name: TBMM Kanun Teklifleri Scraper
+
+on:
+  # Her gün saat 09:00 UTC'de çalışır (Türkiye saati 12:00)
+  schedule:
+    - cron: '0 9 * * *'
+  
+  # Manuel tetikleme için
+  workflow_dispatch:
+  
+  # Push olduğunda test için çalışsın
+  push:
+    branches:
+      - master
+    paths:
+      - 'scraper/kanun_teklifleri_scraper.py'
+      - '.github/workflows/scrape-kanun-teklifleri.yml'
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write  # Sonuçları commit edebilmek için
+    
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: 🐍 Python kurulumu
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: 📦 Python bağımlılıklarını yükle
+        run: |
+          cd scraper
+          pip install -r requirements.txt
+      
+      - name: 🌐 Chrome ve ChromeDriver kurulumu
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+      
+      - name: ✅ Chrome versiyonunu kontrol et
+        run: |
+          google-chrome --version
+          chromedriver --version
+      
+      - name: 🚀 Scraper'ı çalıştır
+        run: |
+          cd scraper
+          python kanun_teklifleri_scraper.py
+        env:
+          # Headless mode için
+          DISPLAY: ':99'
+      
+      - name: 📊 Çekilen veri istatistikleri
+        run: |
+          if [ -f scraper/data/kanun_teklifleri_sorgu.json ]; then
+            echo "✅ Veri başarıyla çekildi"
+            echo "📁 Dosya boyutu: $(du -h scraper/data/kanun_teklifleri_sorgu.json | cut -f1)"
+            echo "📋 Toplam kayıt sayısı: $(cat scraper/data/kanun_teklifleri_sorgu.json | python -c 'import json, sys; print(len(json.load(sys.stdin)))' 2>/dev/null || echo 'hesaplanamadı')"
+          else
+            echo "❌ Veri dosyası oluşturulamadı"
+            exit 1
+          fi
+      
+      - name: 💾 Değişiklikleri commit et
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add scraper/data/kanun_teklifleri_sorgu.json
+          
+          # Eğer değişiklik varsa commit et
+          if git diff --staged --quiet; then
+            echo "ℹ️ Yeni değişiklik yok, commit atlanıyor"
+          else
+            git commit -m "🤖 Otomatik veri güncelleme: $(date +'%Y-%m-%d %H:%M')"
+            git push
+            echo "✅ Veriler başarıyla commit edildi ve push yapıldı"
+          fi
+      
+      - name: 📤 Artifact olarak kaydet (yedek)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kanun-teklifleri-data-${{ github.run_number }}
+          path: scraper/data/kanun_teklifleri_sorgu.json
+          retention-days: 30
+      
+      - name: 🔔 Hata durumunda bildirim (opsiyonel)
+        if: failure()
+        run: |
+          echo "❌ Scraping işlemi başarısız oldu!"
+          echo "🔗 Workflow çalışmasını kontrol edin: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+

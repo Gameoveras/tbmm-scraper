@@ -1,7 +1,36 @@
 ### tbmm-scraper
 
-tbmm.gov.tr uzerinden veri kazima uygulamalari. Indirilen veriler Graph Commons'a import edilmek uzere
-csv dosyalarina cevrilir.
+tbmm.gov.tr üzerinden veri kazıma uygulamaları. İndirilen veriler Graph Commons'a import edilmek üzere
+csv dosyalarına çevrilir.
+
+## 🆕 Python Selenium Scraper (Yeni!)
+
+Modern, otomatik çalışan Python scraper eklendi. GitHub Actions ile sürekli veri toplama desteği.
+
+**Özellikler:**
+- ✅ Selenium ile dinamik sayfa desteği
+- ✅ TBMM Kanun Teklifleri sorgu sayfası scraping
+- ✅ GitHub Actions ile otomatik zamanlama
+- ✅ JSON çıktı formatı
+- ✅ Bot koruması bypass teknikleri
+
+**Hızlı Başlangıç:**
+```bash
+cd scraper
+pip install -r requirements.txt
+python kanun_teklifleri_scraper.py
+```
+
+**Otomatik Çalıştırma:**
+GitHub Actions ile her gün otomatik veri toplama için [GITHUB_ACTIONS_SETUP.md](GITHUB_ACTIONS_SETUP.md) dosyasına bakın.
+
+**Detaylı Dokümantasyon:**
+- [Python Scraper Kullanımı](scraper/README_KANUN_TEKLIFLERI.md)
+- [GitHub Actions Kurulumu](GITHUB_ACTIONS_SETUP.md)
+
+---
+
+## 📦 Node.js Scraper (Klasik)
 
 #### kurulum
 `npm install`

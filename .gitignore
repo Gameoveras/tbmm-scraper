@@ -11,6 +11,8 @@ receiver.log
 # Veri dosyaları
 data/
 *.json
+# ANCAK scraper sonuçları commit edilsin
+!scraper/data/kanun_teklifleri_sorgu.json
 
 # Composer bağımlılıkları (vendor'u commitlediniz, bu satır opsiyonel)
 # vendor/
@@ -43,4 +45,11 @@ admin_cookies.txt
 # Temporary files
 *.tmp
 *.bak
+
+# Selenium ve Chrome
+chrome_profile_*
+debug_page.html
+geckodriver.log
+chromedriver.log
+*.crx
 
