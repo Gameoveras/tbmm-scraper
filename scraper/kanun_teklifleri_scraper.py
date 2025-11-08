@@ -395,9 +395,12 @@ def parse_results_table() -> List[Dict[str, str]]:
         return []
 
 
-def handle_pagination() -> List[Dict[str, str]]:
+def handle_pagination(max_results: int = 20) -> List[Dict[str, str]]:
     """
     Sayfalama varsa tüm sayfaları dolaşır ve sonuçları toplar
+    
+    Args:
+        max_results: Maksimum çekilecek kayıt sayısı (varsayılan: 20)
     """
     all_results = []
     page_num = 1
@@ -408,6 +411,12 @@ def handle_pagination() -> List[Dict[str, str]]:
         # Mevcut sayfadaki sonuçları parse et
         results = parse_results_table()
         all_results.extend(results)
+        
+        # Maksimum kayıt sayısına ulaşıldı mı kontrol et
+        if len(all_results) >= max_results:
+            logger.info(f"✅ Maksimum kayıt sayısına ulaşıldı: {len(all_results)} kayıt")
+            # Sadece istenen sayıda kayıt döndür
+            return all_results[:max_results]
         
         if not results:
             logger.warning(f"⚠️ Sayfa {page_num}'de sonuç bulunamadı")
