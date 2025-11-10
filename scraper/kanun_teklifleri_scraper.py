@@ -10,6 +10,7 @@ sonuçları çeker ve JSON formatında kaydeder.
 import os
 import json
 import time
+import re
 import logging
 from typing import List, Dict, Optional
 from datetime import datetime
@@ -367,14 +368,24 @@ def parse_results_table() -> List[Dict[str, str]]:
                     # Kolon indexine göre isimlendir
                     if idx == 0:
                         row_data['sira'] = text
-                    elif idx == 1 and 'baslik' not in row_data:
-                        row_data['baslik'] = text
-                    elif 'esas' in text.lower() or '/' in text:
-                        row_data['esas_no'] = text
+                    elif idx == 1:
+                        # İkinci sütun: Esas No (format: 2/3356)
+                        if re.match(r'^\d+/\d+$', text):
+                            row_data['esas_no'] = text
+                        elif 'baslik' not in row_data:
+                            row_data['baslik'] = text
+                    elif idx == 2:
+                        # Üçüncü sütun: Tarih (format: 06/11/2025)
+                        if re.match(r'^\d{2}/\d{2}/\d{4}$', text):
+                            row_data['tarih'] = text
+                        elif 'baslik' not in row_data:
+                            row_data['baslik'] = text
                     elif 'dönem' in text.lower() or 'yasama' in text.lower():
                         row_data['donem'] = text
                     elif any(durum in text.upper() for durum in ['KANUNLAŞTI', 'İŞLEMDE', 'KOMİSYONDA', 'GERİ ALINDI']):
                         row_data['durum'] = text
+                    elif 'baslik' not in row_data:
+                        row_data['baslik'] = text
                     else:
                         # Genel field
                         row_data[f'field_{idx}'] = text
@@ -449,7 +460,21 @@ def handle_pagination(max_results: int = 20) -> List[Dict[str, str]]:
             
             if next_button:
                 logger.info(f"  ➡️  Sonraki sayfaya geçiliyor...")
-                next_button.click()
+                
+                # Butonu görünür hale getirmek için scroll et
+                try:
+                    driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", next_button)
+                    time.sleep(1)  # Scroll animasyonu için bekle
+                except:
+                    pass
+                
+                # JavaScript ile tıkla (daha güvenli)
+                try:
+                    driver.execute_script("arguments[0].click();", next_button)
+                except:
+                    # Fallback: Normal tıklama
+                    next_button.click()
+                
                 time.sleep(REQUEST_DELAY)
                 wait_for_page_load()
                 page_num += 1
